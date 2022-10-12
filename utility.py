@@ -149,17 +149,83 @@ class VIV_files:
 
 
 class Decay_test:
-    def __init__(self, filename, starttimes, endtimes, title):
+    def __init__(self, filename, starttimes, endtimes, title, sfreq=200):
         self.filename = filename
-        self.measurements = APReader(path+filename)
+        self.measurements = APReader(filename)
         self.title = title
         self.starttimes = starttimes
         self.endtimes = endtimes
+        self.sfreq = sfreq
 
         try:
             os.mkdir(towing_results)
         except FileExistsError:
             pass
-
+    def plot_valid_sections(self):
+        for i in range(1,7):
+            plt.plot(self.measurements.Channels[0].data[int(self.starttimes[i-1]*self.sfreq):int(self.endtimes[i-1]*self.sfreq)], self.measurements.Channels[i].data[int(self.starttimes[i-1]*self.sfreq):int(self.endtimes[i-1]*self.sfreq)], linewidth=0.5)
+            plt.title(self.measurements.Channels[i].Name + self.title)
+            plt.show()
 def ReducedVelocity(U, f, d):
     return U/(f*d)
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def turningpoints(lst):
+    dx = np.diff(lst)
+    tps_dx = (dx[1:] * dx[:-1] < 0)
+    tps = np.array([1], dtype=bool)
+    tps1 = np.append(tps, tps_dx)
+    tp = np.append(tps1, tps)
+    return tp
+
+
+def PQanalysisFun(t, x, plotflag):
+    # PQ analysis
+    # Inputs: time series t and motion history x. Note that x should have zero mean!
+    # Outputs: coefficients P and Q, raw data xbar and dx, and indices tp for
+    # all turning points (includes negatives!)
+
+    if plotflag == 1:
+        plt.figure()
+        plt.subplot(1, 2, 1)
+        plt.plot(t, x)
+        plt.xlabel('t')
+        plt.ylabel('x')
+
+    tp = turningpoints(x)  # find turning point indices
+    ttp1 = t[tp]
+    xtp1 = x[tp]
+
+    # select only positive turning points
+    ttp = ttp1[xtp1 > 0]
+    xtp = xtp1[xtp1 > 0]
+
+    n = len(xtp)
+
+    if n < 3:
+        print('Error from PQanalysis: Not enough turning points identified')
+        return 0
+
+    if plotflag == 1:
+        plt.plot(ttp, xtp, 'k.')
+
+    # find the mean and differences
+    xbar = 0.5 * (xtp[1:n - 1] + xtp[0:n - 2])
+    dx = (xtp[0:n - 2] - xtp[1:n - 1]) / xbar
+
+    # linear fit
+    pcoeffs = np.polynomial.polynomial.polyfit(xbar, dx, 1)
+    P = pcoeffs[0]  # P coefficient
+    Q = pcoeffs[1]  # Q coefficient
+
+    if plotflag == 1:
+        plt.subplot(1, 2, 2)
+        plt.plot(xbar, dx, 'b.')
+        plt.plot(xbar, np.polynomial.polynomial.polyval(xbar, pcoeffs))
+        plt.ylim(0, 0.3)
+
+    return P, Q, xbar, dx, tp
